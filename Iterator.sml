@@ -1,12 +1,16 @@
 signature ITERATOR =
 sig
     type ('a, 's) iterator
+
+    val make : ('s -> ('a * 's) option) * 's -> ('a, 's) iterator
+
     val fromList : 'a list -> ('a, 'a list) iterator
     val toList   : ('a, 'b) iterator -> 'a list
 
-    val map      : ('a -> 'b) -> ('a, 's) iterator -> ('b, 's) iterator
-    val filter   : ('a -> bool) -> ('a, 's) iterator -> ('a, 's) iterator
-    val foldl    : ('a * 'b -> 'b) -> 'b -> ('a, 's) iterator -> 'b
+    val map        : ('a -> 'b) -> ('a, 's) iterator -> ('b, 's) iterator
+    val mapPartial : ('a -> 'b option) -> ('a, 's) iterator -> ('b, 's) iterator
+    val filter     : ('a -> bool) -> ('a, 's) iterator -> ('a, 's) iterator
+    val foldl      : ('a * 'b -> 'b) -> 'b -> ('a, 's) iterator -> 'b
 
     type ('a, 'sa, 'sb) zipstate
     val zipWith  : ('a * 'b -> 'c) -> ('a, 'sa) iterator -> ('b, 'sb) iterator
@@ -19,6 +23,8 @@ sig
     val memorise : ('a, 's) iterator -> ('a, ('a, 's) memstate) iterator
 end
 
+
+
 structure Iterator :> ITERATOR =
 struct
 
@@ -27,6 +33,14 @@ datatype ('a, 's) step = Yield of 'a * 's
                        | Done
 
 datatype ('a, 's) iterator = S of ('s -> ('a, 's) step) * 's
+
+fun make (getItem, s) =
+  let fun step s =
+        case getItem s of
+            SOME(e, s) => Yield(e, s)
+          | NONE       => Done
+  in  S(step, s)
+  end
 
 fun map f (S(step, s)) =
   let fun step' s =
@@ -37,6 +51,18 @@ fun map f (S(step, s)) =
   in  S(step', s)
   end
 
+fun mapPartial f (S(step, s)) =
+  let fun step' s =
+        case step s of
+            Yield(e, s) => (case f e of
+                                SOME x => Yield(x, s)
+                              | NONE   => Skip s)
+          | Skip s      => Skip s
+          | Done        => Done
+  in  S(step', s)
+  end
+
+
 fun filter p (S(step, s)) =
   let fun step' s =
         case step s of
@@ -46,12 +72,7 @@ fun filter p (S(step, s)) =
   in  S(step', s)
   end
 
-fun fromList xs =
-  let
-      fun step ([]) = Done
-        | step ((x::xs)) = Yield(x, xs)
-  in S(step, xs)
-  end
+fun fromList xs = make(List.getItem, xs)
 
 fun foldl f init (S(step, s)) =
   let fun loop s acc =

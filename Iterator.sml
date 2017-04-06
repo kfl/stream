@@ -92,21 +92,6 @@ fun tabulate (n, f) =
       else S(step, 0)
   end
 
-local
-    datatype 'a thunk = VAL of 'a | THUNK of unit -> 'a
-in
-    type 'a susp = 'a thunk ref
-
-    fun delay (f : unit -> 'a) = ref (THUNK f)
-
-    fun force (su : 'a susp) : 'a =
-	case !su of
-	    VAL v   => v
-	  | THUNK f => let val v = f ()
-		       in su := VAL v; v end
-end
-
-
 datatype ('a, 's) lazy = VAL of ('a, ('a, 's) memstate) step | THUNK of 's
 withtype ('a, 's) memstate = ('a, 's) lazy ref
 

@@ -95,7 +95,7 @@ fun zipWith f (S(stepa, sa)) (S(stepb, sb)) =
                Yield(eb, sb) => Yield(f(ea, eb), Z(sa, sb, NONE))
              | Skip sb       => Skip(Z(sa, sb, pending))
              | Done          => Done)
-        | step _ = raise Fail "Impossible"
+        | step _ = impossible()
   in S(step, Z(sa, sb, NONE))
   end
 

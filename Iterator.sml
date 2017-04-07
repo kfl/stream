@@ -12,6 +12,9 @@ sig
     val filter     : ('a -> bool) -> ('a, 's) iterator -> ('a, 's) iterator
     val foldl      : ('a * 'b -> 'b) -> 'b -> ('a, 's) iterator -> 'b
 
+    type ('b, 'i, 'o) fmstate
+    val flatMap    : ('a -> ('b, 'i) iterator) -> ('a, 'o) iterator -> ('b, ('b, 'i, 'o) fmstate) iterator
+
     type ('a, 'sa, 'sb) zipstate
     val zipWith  : ('a * 'b -> 'c) -> ('a, 'sa) iterator -> ('b, 'sb) iterator
                    -> ('c, ('a, 'sa, 'sb) zipstate) iterator
@@ -62,7 +65,6 @@ fun mapPartial f (S(step, s)) =
   in  S(step', s)
   end
 
-
 fun filter p (S(step, s)) =
   let fun step' s =
         case step s of
@@ -71,6 +73,23 @@ fun filter p (S(step, s)) =
           | otherwise           => otherwise
   in  S(step', s)
   end
+
+type ('b, 'i, 'o) fmstate = ('b, 'i) iterator option * 'o
+
+fun flatMap f (S(outer, so)) =
+  let fun step (SOME(S(inner, si)), so) =
+        (case inner si of
+             Yield(e, s) => Yield(e, (SOME(S(inner, s)), so))
+           | Skip s      => Skip (SOME(S(inner, s)), so)
+           | Done        => Skip (NONE, so))
+        | step (NONE, so) =
+          (case outer so of
+               Yield(e, so) => Skip (SOME(f e), so)
+             | Skip so      => Skip (NONE, so)
+             | Done         => Done)
+  in  S(step, (NONE, so))
+  end
+
 
 fun fromList xs = make(List.getItem, xs)
 

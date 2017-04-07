@@ -1,14 +1,18 @@
 signature STREAM =
 sig
     type 'a stream
+
+    val make : ('s -> ('a * 's) option) * 's -> 'a stream
+
     val fromList : 'a list -> 'a stream
     val toList   : 'a stream -> 'a list
 
-    val map      : ('a -> 'b) -> 'a stream -> 'b stream
-    val filter   : ('a -> bool) -> 'a stream -> 'a stream
-    val foldl    : ('a * 'b -> 'b) -> 'b -> 'a stream -> 'b
-    val zipWith  : ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
-    val tabulate : int * (int -> 'a) -> 'a stream
+    val map        : ('a -> 'b) -> 'a stream -> 'b stream
+    val mapPartial : ('a -> 'b option) -> 'a stream -> 'b stream
+    val filter     : ('a -> bool) -> 'a stream -> 'a stream
+    val foldl      : ('a * 'b -> 'b) -> 'b -> 'a stream -> 'b
+    val zipWith    : ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
+    val tabulate   : int * (int -> 'a) -> 'a stream
 end
 
 structure Stream :> STREAM =
@@ -21,6 +25,20 @@ datatype ('a, 's) step = Yield of 'a * 's
 
 datatype 'a stream = S of (existential -> ('a, existential) step) * existential
 
+fun impossible () = raise Fail "Impossible"
+
+fun make (getItem, s) =
+  let exception E of 'a
+      fun step (E s) =
+        (case getItem s of
+             SOME(e, s) => Yield(e, E s)
+           | NONE       => Done)
+        | step _ = impossible()
+
+  in  S(step, E s)
+  end
+
+
 fun map f (S(step, s)) =
   let fun step' s =
         case step s of
@@ -29,6 +47,18 @@ fun map f (S(step, s)) =
           | Done        => Done
   in  S(step', s)
   end
+
+fun mapPartial f (S(step, s)) =
+  let fun step' s =
+        case step s of
+            Yield(e, s) => (case f e of
+                                SOME x => Yield(x, s)
+                              | NONE   => Skip s)
+          | Skip s      => Skip s
+          | Done        => Done
+  in  S(step', s)
+  end
+
 
 fun filter p (S(step, s)) =
   let fun step' s =
@@ -39,13 +69,7 @@ fun filter p (S(step, s)) =
   in  S(step', s)
   end
 
-fun fromList xs =
-  let exception E of 'a list
-      fun step (E []) = Done
-        | step (E(x::xs)) = Yield(x, E xs)
-        | step _ = raise Fail "Impossible"
-  in S(step, E xs)
-  end
+fun fromList xs = make(List.getItem, xs)
 
 fun foldl f init (S(step, s)) =
   let fun loop s acc =
@@ -76,13 +100,10 @@ fun zipWith f (S(stepa, sa)) (S(stepb, sb)) =
   end
 
 fun tabulate (n, f) =
-  let exception T of int
-      fun step (T i) =
-          if i < n then Yield(f i, T(i+1))
-          else Done
-        | step _ = raise Fail "Impossible"
+  let fun next i = if i < n then SOME(f i, i+1)
+                   else NONE
   in  if n < 0 then raise Size
-      else S(step, T 0)
+      else make(next, 0)
   end
 
 end
@@ -105,7 +126,7 @@ fun big n =
    they'll fail for large lists. Here is a safe implementation of some
    of the key functions.
 *)
-structure SafeList : List =
+structure SafeList =
 struct
 open List
 
@@ -120,6 +141,7 @@ fun tabulate(n, f) =
 fun map f xs = rev(foldl (fn(x, acc) => f x :: acc) [] xs)
 
 fun filter p xs = rev(foldl (fn(x, acc) => if p x then x :: acc else acc) [] xs)
+
 
 end
 
